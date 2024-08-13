@@ -64,6 +64,7 @@ extern int daemon(int, int);
 #endif
 
 static char version[] = "0.8.1"; /* Added .1 (LuisPa) */
+static char SESAMO[] = "¡¡ Ábrete Sésamo !!"; /* Added (LuisPa) */
 
 #define SEQ_TIMEOUT 25 /* default knock timeout in seconds */
 #define CMD_TIMEOUT 10 /* default timeout in seconds between start and stop commands */
@@ -1538,11 +1539,11 @@ void process_attempt(knocker_t *attempt)
 	}
 	if(attempt->stage >= attempt->door->seqcount) {
 		if(attempt->srchost) {
-			vprint("%s (%s): %s: OPEN SESAME\n", attempt->src, attempt->srchost, attempt->door->name);
-			logprint("%s (%s): %s: OPEN SESAME", attempt->src, attempt->srchost, attempt->door->name);
+			vprint("%s (%s): %s: %s\n", attempt->src, attempt->srchost, attempt->door->name, SESAMO);
+			logprint("%s (%s): %s: %s", attempt->src, attempt->srchost, attempt->door->name, SESAMO);
 		} else {
-			vprint("%s: %s: OPEN SESAME\n", attempt->src, attempt->door->name);
-			logprint("%s: %s: OPEN SESAME", attempt->src, attempt->door->name);
+			vprint("%s: %s: %s\n", attempt->src, attempt->door->name, SESAMO);
+			logprint("%s: %s: %s", attempt->src, attempt->door->name, SESAMO);
 		}
 		if(start_command && strlen(start_command)) {
 			/* run the associated command */

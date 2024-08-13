@@ -59,7 +59,7 @@ can only be accessed after a successful knock sequence.
   5. Server detects this and runs another iptables command to close port
      22 to Client.
 
-See [./etc/knockd.conf](./etc/knockd.conf) for examples.
+See [./knockd.conf](./knockd.conf) for examples.
 
 ## TROUBLESHOOTING
 
