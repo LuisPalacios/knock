@@ -1,64 +1,81 @@
 #!/bin/bash
 #
-# Knocker Client helper, by LuisPa 2024
+# Knocker, by LuisPa 2024
 #
-# Dependencies: netcat-openbs, knock
+# Dependencies: netcat-openbsd, knock
 
-# This script knocks in a server using the following parameters
-# This is a helper sample related to the "Advanced example with DNAT"
-# that you can find in the ../knockd.conf file
-# Our target entry point...
+# Configuration: Server and Port details
 SERVER="www.mypublicsite.com"
 PORT="2443"
 
-# SYNs we'll send, so knockd opens the above port
-KNOCK1="12345"
-KNOCK2="23456"
-KNOCK3="34567"
+# Port knock sequence
+KNOCK_SEQUENCE=("12345" "23456" "34567")
 
-# Pretty echos
-VERDE=$(tput setaf 2)
-AMARILLO=$(tput setaf 3)
-ROJO=$(tput setaf 1)
-# Messaging
-spaces=0
+# Global configuration for the number of attempts
+MAX_ATTEMPTS=3
+
+# ----------------------------------------------------------------------------------------
+# Pretty Messaging Setup
+# ----------------------------------------------------------------------------------------
+
+# Colors for status messages
+COLOR_GREEN=$(tput setaf 2)
+COLOR_YELLOW=$(tput setaf 3)
+COLOR_RED=$(tput setaf 1)
+
+# Terminal width
 width=$(tput cols)
+message_len=0
+
+# Function to print a message
 echo_message() {
-    message=${1}
+    local message=$1
     message_len=${#message}
     printf "%s " "$message"
 }
+
+# Function to print a status message (OK, WARNING, ERROR) right-justified
 echo_status() {
-    case ${1} in
+    local status=$1
+    local status_msg
+    local status_color
+
+    case $status in
         ok)
             status_msg="OK"
-            status_color=${VERDE}
+            status_color=${COLOR_GREEN}
             ;;
         warning)
             status_msg="WARNING"
-            status_color=${AMARILLO}
+            status_color=${COLOR_YELLOW}
             ;;
         error)
             status_msg="ERROR"
-            status_color=${ROJO}
+            status_color=${COLOR_RED}
             ;;
         *)
-            status_msg="???"
-            status_color=${ROJO}
+            status_msg="UNKNOWN"
+            status_color=${COLOR_RED}
             ;;
     esac
-    status_len=${#status_msg}
-    spaces=$((width - message_len - status_len - 2 ))
+
+    local status_len=${#status_msg}
+    local spaces=$((width - message_len - status_len - 2))
+
     printf "%${spaces}s" "["
     printf "${status_color}${status_msg}\e[0m"
     echo "]"
 }
 
-# Openess
+# ----------------------------------------------------------------------------------------
+# Utility Functions
+# ----------------------------------------------------------------------------------------
+
+# Function to check if a port is open on a server
 is_port_open() {
     echo_message "Checking ${SERVER}:${PORT}"
     nc -z -w 1 ${SERVER} ${PORT} 2> /dev/null
-    if [ "${?}" == "1" ] ; then
+    if [ $? -ne 0 ]; then
         echo_status warning
         return 1
     else
@@ -67,23 +84,52 @@ is_port_open() {
     fi
 }
 
-# Wait till we have internet
-echo_message "Checking my service"
-while ! ping -c 1 8.8.8.8 >/dev/null 2>&1; do echo "Waiting for internet access"; sleep 1; done;
-echo_status ok
+# Function to wait for internet connectivity
+wait_for_internet() {
+    echo_message "Checking internet connectivity"
+    while ! ping -c 1 8.8.8.8 >/dev/null 2>&1; do
+        echo "Waiting for internet access"
+        sleep 1
+    done
+    echo_status ok
+}
 
-# Knock Knock
-#
+# Function to flush DNS cache
+flush_dns_cache() {
+    echo_message "Flushing DNS cache"
+    resolvectl flush-caches
+    echo_status ok
+}
+
+
+# Function to perform the knock sequence
+perform_knock() {
+    echo_message "Performing knock sequence"
+    knock -4 -d 1000 -v ${SERVER} "${KNOCK_SEQUENCE[@]}"
+    sleep 1
+}
+
+# ----------------------------------------------------------------------------------------
+# Main Script Execution
+# ----------------------------------------------------------------------------------------
+
+# Step 1: Wait for internet access
+wait_for_internet
+
+# Step 2: Flush DNS cache
+flush_dns_cache
+
+# Step 3: Attempt to open the port with knocking
 keep_trying=true
 retry=1
 door_is_open=false
-while [ $retry -le 3 ]; do
+
+while [ $retry -le $MAX_ATTEMPTS ]; do
     if $keep_trying; then
         is_port_open
-        if [ "${?}" != "0" ] ; then
+        if [ $? -ne 0 ]; then
             echo "Door is closed. Knocking..."
-            knock -4 -d 1000 -v ${SERVER} ${KNOCK1} ${KNOCK2} ${KNOCK3}
-            sleep 1
+            perform_knock
         else
             door_is_open=true
             keep_trying=false
@@ -92,9 +138,10 @@ while [ $retry -le 3 ]; do
     retry=$(( retry + 1 ))
 done
 
+# Exit with an error if the port was not opened
 if ! $door_is_open; then
+    echo "Failed to open port after 3 attempts."
     exit 1
 fi
 
 exit 0
-
