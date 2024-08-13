@@ -1,0 +1,21 @@
+[Unit]
+Description=Port-Knock Daemon
+Wants=network-online.target internet_wait.service
+After=network-online.target internet_wait.service
+Documentation=man:knockd(1)
+
+[Service]
+Type=forking
+EnvironmentFile=-/etc/default/knockd
+ExecStart=/usr/local/sbin/knockd $KNOCKD_OPTS
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+SuccessExitStatus=0 2 15
+ProtectSystem=true
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_MODULE
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
+Alias=knockd.service

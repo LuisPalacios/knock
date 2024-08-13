@@ -1,0 +1,10 @@
+[Unit]
+Description=Activate Port-Knock daemon 2min after boot
+
+[Timer]
+# Time to wait after booting before we run first time
+OnBootSec=2min
+Unit=knockd.service
+
+[Install]
+WantedBy=multi-user.target

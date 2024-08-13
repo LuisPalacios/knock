@@ -1,0 +1,2 @@
+# Options for knockd daemon
+KNOCKD_OPTS="-i ppp0 -d -c /usr/local/etc/knockd.conf"

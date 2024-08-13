@@ -63,7 +63,7 @@
 extern int daemon(int, int);
 #endif
 
-static char version[] = "0.8";
+static char version[] = "0.8.1"; /* Added .1 (LuisPa) */
 
 #define SEQ_TIMEOUT 25 /* default knock timeout in seconds */
 #define CMD_TIMEOUT 10 /* default timeout in seconds between start and stop commands */
@@ -409,7 +409,7 @@ void dprint_sequence(opendoor_t *door, char *fmt, ...)
 					printf((i == door->seqcount-1 ? "%u:udp\n" : "%u:udp,"), door->sequence[i]);
 					break;
 				case IPPROTO_TCP: /* fallthrough */
-				default: 
+				default:
 					printf((i == door->seqcount-1 ? "%u:tcp\n" : "%u:tcp,"), door->sequence[i]);
 			}
 		}
@@ -520,6 +520,7 @@ void usage(int exit_code) {
 void ver() {
 	printf("knockd %s\n", version);
 	printf("Copyright (C) 2004-2012 Judd Vinet <jvinet@zeroflux.org>\n");
+	printf("Forked version 2024 - by LuisPa\n");
 	exit(0);
 }
 
@@ -1625,8 +1626,8 @@ void sniff(u_char* arg, const struct pcap_pkthdr* hdr, const u_char* packet)
 	/* timestamp */
 	time_t pkt_secs = hdr->ts.tv_sec;
 	struct tm* pkt_tm;
-	char pkt_date[11];
-	char pkt_time[9];
+	char pkt_date[20];
+	char pkt_time[20];
 	PMList *lp;
 	knocker_t *attempt = NULL;
 	PMList *found_attempts = NULL, *found_attempt;
@@ -1710,12 +1711,39 @@ void sniff(u_char* arg, const struct pcap_pkthdr* hdr, const u_char* packet)
 		}
 	}
 
-	/* get the date/time */
-	pkt_tm = localtime(&pkt_secs);
-	snprintf(pkt_date, 11, "%04d-%02d-%02d", pkt_tm->tm_year+1900, pkt_tm->tm_mon,
-			pkt_tm->tm_mday);
-	snprintf(pkt_time, 9, "%02d:%02d:%02d", pkt_tm->tm_hour, pkt_tm->tm_min,
-			pkt_tm->tm_sec);
+	/* Fixed warnings on gcc with the size of pkt_date and pkt_time */
+    /* get the date/time */
+    pkt_tm = localtime(&pkt_secs);
+
+    // Validate pkt_tm date values
+    if (pkt_tm->tm_year < 0 || pkt_tm->tm_mon < 0 || pkt_tm->tm_mon > 11 || pkt_tm->tm_mday < 1 || pkt_tm->tm_mday > 31) {
+        // Invalid date values, set to default fake date
+        snprintf(pkt_date, sizeof(pkt_date), "YYYY-MM-DD");
+    } else {
+        // Use snprintf to format the date string
+        int ret = snprintf(pkt_date, sizeof(pkt_date), "%04d-%02d-%02d", pkt_tm->tm_year + 1900, pkt_tm->tm_mon + 1, pkt_tm->tm_mday);
+
+        // Check if snprintf was successful and didn't truncate
+        if (ret < 0 || ret >= sizeof(pkt_date)) {
+            // snprintf failed or output was truncated, set to default fake date
+            snprintf(pkt_date, sizeof(pkt_date), "YYYY-MM-DD");
+        }
+    }
+
+    // Validate pkt_tm time values
+    if (pkt_tm->tm_hour < 0 || pkt_tm->tm_hour > 23 || pkt_tm->tm_min < 0 || pkt_tm->tm_min > 59 || pkt_tm->tm_sec < 0 || pkt_tm->tm_sec > 59) {
+        // Invalid time values, set to default fake time
+        snprintf(pkt_time, sizeof(pkt_time), "HH:MM:SS");
+    } else {
+        // Use snprintf to format the time string
+        int ret = snprintf(pkt_time, sizeof(pkt_time), "%02d:%02d:%02d", pkt_tm->tm_hour, pkt_tm->tm_min, pkt_tm->tm_sec);
+
+        // Check if snprintf was successful and didn't truncate
+        if (ret < 0 || ret >= sizeof(pkt_time)) {
+            // snprintf failed or output was truncated, set to default fake time
+            snprintf(pkt_time, sizeof(pkt_time), "HH:MM:SS");
+        }
+    }
 
 	/* convert IPs from binary to string */
 	if(ip->ip_v == 4) {

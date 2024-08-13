@@ -1,7 +1,8 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 # Original version to add non-duplicated rules by Greg Kuchyt (greg.kuchyt@gmail.com)
 # Updated to handle deletes and be generic by Paul Rogers (paul.rogers@flumps.org)
+# Updated to work with bash
 
 SCRIPT_NAME=$(basename $0)
 
@@ -10,14 +11,11 @@ GREP="/bin/grep"
 IPTABLES="/sbin/iptables"
 SORT="/bin/sort"
 
-COMMENT_APP="Append "
-COMMENT_DEL="Delete "
-COMMENT_INS="Insert "
-COMMENT_DEFAULT="by knockd"
-
+# Default values
+COMMENT_DEFAULT="Rule by knockd"
 IPT_CHAIN="INPUT"
 IPT_METHOD=""
-IPT_COMMENT=""
+IPT_COMMENT=$COMMENT_DEFAULT
 IPT_SRC_IP=""
 IPT_DST_PORT=""
 IPT_PROTO="tcp"
@@ -28,22 +26,22 @@ SEEN=0
 VERBOSE=0
 
 usage() {
-	echo "Usage: $SCRIPT_NAME -a|-i|-x -f SRC_IP_ADDR -d DST_PORT [-p|-c|-m|-t|-h|-v]"
-	echo "Options:"
-	echo "-a|--append      Action: append a rule to NetFilter"
-	echo "-i|--insert      Action: insert a rule to NetFiler"
-	echo "-x|--delete      Action: delete a rule from NetFilter"
-	echo "-f|--srcaddr     The source IP address to be used"
-	echo "-d|--dstport     The destination port to be used in the rule"
-	echo "-p|--proto       The protocol that the rule applies to; default: $IPT_PROTO"
-	echo "-c|--chain       The NetFilter chain to apply the change to; default: $IPT_CHAIN"
-	echo "-m|--comment     Overide default comment text: '$COMMENT_DEFAULT'"
-	echo "-t|--test        Test run - don't actually perform an update to NetFilter"
-	echo "-h|--help        Print this informational screen and exit"
-	echo "-v|--verbose     Print verbose information about actions"
+    echo "Usage: $SCRIPT_NAME -a|-i|-x -f SRC_IP_ADDR -d DST_PORT [-p|-c|-m COMMENT|-t|-h|-v]"
+    echo "Options:"
+    echo "-a|--append      Action: append a rule to NetFilter"
+    echo "-i|--insert      Action: insert a rule to NetFilter"
+    echo "-x|--delete      Action: delete a rule from NetFilter"
+    echo "-f|--srcaddr     The source IP address to be used"
+    echo "-d|--dstport     The destination port to be used in the rule"
+    echo "-p|--proto       The protocol that the rule applies to; default: $IPT_PROTO"
+    echo "-c|--chain       The NetFilter chain to apply the change to; default: $IPT_CHAIN"
+    echo "-m|--comment     Override default comment ('$COMMENT_DEFAULT')"
+    echo "-t|--test        Test run - don't actually perform an update to NetFilter"
+    echo "-h|--help        Print this informational screen and exit"
+    echo "-v|--verbose     Print verbose information about actions"
 }
 
-ARGS=$(getopt -o aixf:d:p:c:m::thv -l "append,insert,delete,srcaddr:,dstport:,proto:,chain:,comment::,test,help,verbose" -n $SCRIPT_NAME -- "$@")
+ARGS=$(getopt -o aixf:d:p:c:m:thv -l "append,insert,delete,srcaddr:,dstport:,proto:,chain:,comment:,test,help,verbose" -n $SCRIPT_NAME -- "$@")
 
 if [ $? -ne 0 ];
 then
@@ -55,7 +53,7 @@ fi
 eval set -- "$ARGS"
 
 while true; do
-        case "$1" in
+     case "$1" in
 		-a|--append)
 			IPT_METHOD="-A"
 			shift;
@@ -85,19 +83,13 @@ while true; do
 			shift 2;
 		;;
 		-m|--comment)
-			case "$2" in
-				"")
-					IPT_COMMENT=$COMMENT_DEFAULT;
-					shift 2;;
-				*)
-					IPT_COMMENT=$2;
-					shift 2 ;;
-			esac
-		;;
+            IPT_COMMENT=$2
+            shift 2
+        ;;
 		-t|--test)
 			DRY_RUN=1
-                        shift;
-                ;;
+            shift;
+            ;;
 		-h|--help)
 			usage
 			shift;
@@ -107,11 +99,16 @@ while true; do
 			VERBOSE=1
 			shift;
 		;;
-                --)
-                        shift;
-                        break;
-                ;;
-        esac
+        --)
+            shift;
+            break;
+        ;;
+        *)
+            echo "$SCRIPT_NAME - Error! Unexpected argument: $1"
+            usage
+            exit 1
+        ;;
+    esac
 done
 
 # Begin sanity checks
@@ -130,18 +127,6 @@ fi
 if [ -z "$IPT_METHOD" ]; then
 	echo "$SCRIPT_NAME - Error! Valid action option not specified"
 fi
-
-case "$IPT_METHOD" in
-	-A)
-		IPT_COMMENT="$COMMENT_APP $IPT_COMMENT"
-		;;
-	-I)
-		IPT_COMMENT="$COMMENT_INS $IPT_COMMENT"
-		;;
-	-D)
-		IPT_COMMENT="$COMMENT_DEL $IPT_COMMENT"
-		;;
-esac
 
 if [ "$VERBOSE" -eq 1 ]; then
 	echo "$SCRIPT_NAME - Testing rule"
@@ -176,14 +161,18 @@ if [ "$VERBOSE" -eq 1 ]; then
 	echo "$SCRIPT_NAME - Seen: $SEEN"
 fi
 
+if [ "$SEEN" -eq 0 ] || [ "${IPT_METHOD}" == "-D" ]; then
+    if [ "$VERBOSE" -eq 1 ]; then
+        echo "$SCRIPT_NAME - $IPT_COMMENT"
+        echo $IPTABLES $IPT_METHOD $IPT_CHAIN -s $IPT_SRC_IP -p $IPT_PROTO --dport $IPT_DST_PORT -j $IPT_RULE_TARGET $COMMENT
+    fi
 
-if [ "$SEEN" -eq 0 ]; then
-	if [ "$VERBOSE" -eq 1 ]; then
-		echo "$SCRIPT_NAME - $IPT_COMMENT"
-		echo $IPTABLES $IPT_METHOD $IPT_CHAIN -s $IPT_SRC_IP -p $IPT_PROTO --dport $IPT_DST_PORT -j $IPT_RULE_TARGET $COMMENT
-	fi
-
-	if [ "$DRY_RUN" -eq 0 ]; then
-		eval $IPTABLES $IPT_METHOD $IPT_CHAIN -s $IPT_SRC_IP -p $IPT_PROTO --dport $IPT_DST_PORT -j $IPT_RULE_TARGET $COMMENT
-	fi
+    if [ "$DRY_RUN" -eq 0 ]; then
+        eval $IPTABLES $IPT_METHOD $IPT_CHAIN -s $IPT_SRC_IP -p $IPT_PROTO --dport $IPT_DST_PORT -j $IPT_RULE_TARGET $COMMENT
+    fi
+else
+    if [ "$VERBOSE" -eq 1 ]; then
+        echo "$SCRIPT_NAME - Rule already exists, not adding."
+    fi
 fi
+
